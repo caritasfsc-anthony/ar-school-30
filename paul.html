@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <title>聖保祿 AR (模擬 V7)</title>
+    <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+    <script src="https://unpkg.com/aframe-look-at-component@0.8.0/dist/aframe-look-at-component.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
+    <script>
+      function takeScreenshot() {
+          const uiElements = ['.hud-panel', '#center-focus', '.photo-btn', '.top-bar', '.back-btn', '#compass-container', '.prompt-text'];
+          uiElements.forEach(selector => { const el = document.querySelector(selector); if (el) el.style.visibility = 'hidden'; });
+          var video = document.querySelector('video'); var scene = document.querySelector('a-scene'); var canvas = scene.components.screenshot.getCanvas('perspective');
+          if (video && canvas) {
+              var mergeCanvas = document.createElement('canvas'); mergeCanvas.width = canvas.width; mergeCanvas.height = canvas.height; var ctx = mergeCanvas.getContext('2d'); var scale = canvas.width / video.videoWidth; var videoHeight = video.videoHeight * scale; var offsetY = (canvas.height - videoHeight) / 2; ctx.drawImage(video, 0, offsetY, canvas.width, videoHeight); ctx.drawImage(canvas, 0, 0);
+              try { var dataURL = mergeCanvas.toDataURL('image/jpeg'); var link = document.createElement('a'); link.download = 'ar-mission-' + Date.now() + '.jpg'; link.href = dataURL; link.click(); } catch (e) {}
+          }
+          setTimeout(() => { uiElements.forEach(selector => { const el = document.querySelector(selector); if (el) el.style.visibility = 'visible'; }); }, 500);
+      }
+      AFRAME.registerComponent('guide-system', {
+          init: function () {
+          this.camera = document.querySelector('a-camera'); this.uiArrowLeft = document.getElementById('arrow-left'); this.uiArrowRight = document.getElementById('arrow-right'); this.uiCenter = document.getElementById('center-focus'); this.selector = document.getElementById('target-selector'); this.uiDistance = document.getElementById('ui-distance'); this.photoBtn = document.getElementById('photo-btn'); this.compassRing = document.getElementById('compass-ring');
+          this.currentTargetId = "all"; this.lockStartTime = null; this.isLocked = false;
+          const urlParams = new URLSearchParams(window.location.search); const targetParam = urlParams.get('target'); if (targetParam) { let optionExists = this.selector.querySelector(`option[value="${targetParam}"]`); if (optionExists) { this.currentTargetId = targetParam; this.selector.value = targetParam; } }
+          this.selector.addEventListener('change', (e) => { this.currentTargetId = e.target.value; this.updateVisibility(); this.resetLock(); });
+          this.photoBtn.addEventListener('click', takeScreenshot); this.updateVisibility();
+        },
+        resetLock: function() { this.isLocked = false; this.lockStartTime = null; this.uiCenter.innerText = "+"; this.uiCenter.style.borderColor = "white"; this.uiCenter.style.backgroundColor = "transparent"; this.uiCenter.style.pointerEvents = "none"; this.uiCenter.onclick = null; this.photoBtn.style.display = "none"; },
+        updateVisibility: function() { var targets = document.querySelectorAll('.ar-target'); targets.forEach(el => { if (this.currentTargetId === "all" || el.id === this.currentTargetId) { el.setAttribute('visible', true); } else { el.setAttribute('visible', false); } }); this.uiArrowLeft.style.opacity = 0; this.uiArrowRight.style.opacity = 0; if (this.currentTargetId === "all") { this.uiDistance.innerText = "請選擇任務目標"; } },
+        tick: function () {
+            if (!this.camera) return;
+            var yRot = this.camera.getAttribute('rotation').y; if (this.compassRing) { this.compassRing.style.transform = `rotate(${-yRot}deg)`; }
+            if (this.currentTargetId === "all") return; let targetEl = document.getElementById(this.currentTargetId); if (!targetEl) return; let targetLink = targetEl.getAttribute('data-link'); let targetPos = new THREE.Vector3(); let camPos = new THREE.Vector3(); targetEl.object3D.getWorldPosition(targetPos); this.camera.object3D.getWorldPosition(camPos); let dist = camPos.distanceTo(targetPos); if (!isNaN(dist)) { this.uiDistance.innerText = "距離目標: " + Math.round(dist) + " 米"; } this.camera.object3D.worldToLocal(targetPos); let isBehind = targetPos.z > 0; let x = targetPos.x;
+            
+            // 判定範圍 60
+            let inSights = !isBehind && x > -60 && x < 60;
+
+            if (inSights) { this.uiArrowLeft.style.opacity = 0; this.uiArrowRight.style.opacity = 0; this.uiCenter.style.borderColor = "#00ff00"; this.photoBtn.style.display = "block"; if (!this.isLocked) { this.isLocked = true; this.lockStartTime = Date.now(); this.uiCenter.innerText = "發現目標"; this.uiCenter.style.fontSize = "24px"; this.uiCenter.style.color = "#00ff00"; this.uiCenter.style.backgroundColor = "rgba(0,0,0,0.3)"; this.uiCenter.style.pointerEvents = "none"; } else { let elapsed = Date.now() - this.lockStartTime; if (elapsed > 1000) { this.uiCenter.innerText = "了解更多 🔗"; this.uiCenter.style.backgroundColor = "#007bff"; this.uiCenter.style.color = "white"; this.uiCenter.style.pointerEvents = "auto"; this.uiCenter.onclick = function() { if (targetLink) window.location.href = targetLink; }; } } } else { this.resetLock(); if (isBehind || x < -60) { this.uiArrowLeft.style.opacity = 1; this.uiArrowRight.style.opacity = 0; } else if (x > 60) { this.uiArrowLeft.style.opacity = 0; this.uiArrowRight.style.opacity = 1; } } }
+      });
+    </script>
+    <style>
+        .top-bar { position: fixed; top: 10px; left: 0; width: 100%; text-align: center; z-index: 999; }
+        select { padding: 12px 20px; font-size: 16px; border-radius: 25px; border: 2px solid #00c6ff; background: rgba(0,0,0,0.6); color: #00c6ff; font-weight:bold; outline: none; backdrop-filter: blur(5px); }
+        .arrow-indicator { position: fixed; top: 50%; transform: translateY(-50%); font-size: 80px; color: yellow; font-weight: bold; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 998; text-shadow: 2px 2px 5px black; }
+        #arrow-left { left: 20px; animation: blink 1s infinite; } #arrow-right { right: 20px; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.3; } }
+        .center-reticle { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 250px; height: 120px; border: 3px dashed white; border-radius: 15px; display: flex; justify-content: center; align-items: center; color: white; font-family: sans-serif; font-weight: bold; font-size: 30px; pointer-events: none; transition: all 0.3s; z-index: 1000; text-shadow: 1px 1px 3px black; }
+        .photo-btn { position: fixed; bottom: 150px; left: 50%; transform: translateX(-50%); width: 70px; height: 70px; background: white; border-radius: 50%; border: 5px solid #ccc; display: none; z-index: 1001; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5); background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="black"><path d="M12 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3zm0 4.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm9.5-6.5h-3.17L17 5H7l-1.33 2H2.5c-.83 0-1.5.67-1.5 1.5v11c0 .83.67 1.5 1.5 1.5h19c.83 0 1.5-.67 1.5-1.5v-11c0-.83-.67-1.5-1.5-1.5zm-9.5 9c-2.49 0-4.5-2.01-4.5-4.5S9.51 7 12 7s4.5 2.01 4.5 4.5-2.01 4.5-4.5 4.5z"/></svg>'); background-size: 60%; background-position: center; background-repeat: no-repeat; }
+        .hud-panel { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 50, 0.7); color: white; border-radius: 20px; padding: 10px 20px; font-family: sans-serif; font-size: 18px; border: 1px solid rgba(255,255,255,0.3); z-index: 999; backdrop-filter: blur(5px); }
+        .back-btn { position: fixed; bottom: 30px; left: 20px; z-index: 999; background: rgba(255,255,255,0.2); color: white; padding: 10px 20px; text-decoration: none; border-radius: 30px; border: 1px solid white; backdrop-filter: blur(5px); }
+        #compass-container { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); width: 120px; height: 120px; z-index: 998; pointer-events: none; }
+        #compass-ring { width: 100%; height: 100%; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,0.8)" stroke-width="3"/><text x="50" y="24" font-family="Arial" font-size="18" fill="white" text-anchor="middle" font-weight="bold">N</text><text x="50" y="88" font-family="Arial" font-size="18" fill="white" text-anchor="middle" font-weight="bold">S</text><text x="82" y="56" font-family="Arial" font-size="18" fill="white" text-anchor="middle" font-weight="bold">E</text><text x="18" y="56" font-family="Arial" font-size="18" fill="white" text-anchor="middle" font-weight="bold">W</text></svg>'); background-size: contain; transition: transform 0.1s linear; }
+        .prompt-text { position: fixed; top: 200px; left: 50%; transform: translateX(-50%); color: white; font-family: sans-serif; font-size: 20px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); z-index: 998; pointer-events: none; white-space: nowrap; }
+    </style>
+  </head>
+  <body style="margin: 0; overflow: hidden;">
+    <div class="top-bar">
+        <select id="target-selector">
+            <option value="all">📍 (聖保祿) 請選擇目標</option>
+            <option value="target-1">🏘️ 尋找「■」</option>
+            <option value="target-2">📡 尋找「●」</option>
+            <option value="target-3">🪨 尋找「▲」</option>
+            <option value="target-4">🏖️ 尋找「Z」</option>
+        </select>
+    </div>
+    
+    <div id="compass-container"><div id="compass-ring"></div></div>
+    <div class="prompt-text">用手機探索目標位置</div>
+    <div id="arrow-left" class="arrow-indicator">⬅</div> <div id="arrow-right" class="arrow-indicator">➡</div>
+    <div id="center-focus" class="center-reticle">+</div>
+    <div id="photo-btn" class="photo-btn"></div>
+    <div class="hud-panel"><div id="ui-distance">準備就緒</div></div>
+    <a href="index.html" class="back-btn">⬅ 離開</a>
+
+    <a-scene guide-system vr-mode-ui="enabled: false" embedded arjs="sourceType: webcam; debugUIEnabled: false; videoTexture: true;" renderer="logarithmicDepthBuffer: true; preserveDrawingBuffer: true;">
+      <a-image id="target-1" class="ar-target" src="point.png" look-at="[gps-camera]" scale="300 300 1" gps-entity-place="latitude: 22.214868; longitude: 113.990113;" position="0 50 0" data-link="https://sites.google.com/caritasfsc.edu.hk/mini-game/30%E9%80%B1%E5%B9%B4%E5%B0%8F%E9%81%8A%E6%88%B2-01"></a-image>
+      <a-image id="target-2" class="ar-target" src="point.png" look-at="[gps-camera]" scale="200 200 1" gps-entity-place="latitude: 22.219556; longitude: 114.030049;" position="0 50 0" data-link="https://sites.google.com/caritasfsc.edu.hk/mini-game/30%E9%80%B1%E5%B9%B4%E5%B0%8F%E9%81%8A%E6%88%B2-02"></a-image>
+      <a-image id="target-3" class="ar-target" src="point.png" look-at="[gps-camera]" scale="250 250 1" gps-entity-place="latitude: 22.216956; longitude: 114.033932;" position="0 50 0" data-link="https://sites.google.com/caritasfsc.edu.hk/mini-game/30%E9%80%B1%E5%B9%B4%E5%B0%8F%E9%81%8A%E6%88%B2-03"></a-image>
+      <a-image id="target-4" class="ar-target" src="point.png" look-at="[gps-camera]" scale="200 200 1" gps-entity-place="latitude: 22.210322; longitude: 114.029983;" position="0 50 0" data-link="https://sites.google.com/caritasfsc.edu.hk/mini-game/30%E9%80%B1%E5%B9%B4%E5%B0%8F%E9%81%8A%E6%88%B2-04"></a-image>
+      <a-camera gps-camera="simulateLatitude: 22.205201; simulateLongitude: 114.032180; minDistance: 20; maxDistance: 10000;" rotation-reader></a-camera>
+    </a-scene>
+  </body>
+</html>
